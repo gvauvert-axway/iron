@@ -193,7 +193,13 @@ class StoreManagerImpl implements StoreManager {
 
     private void processTransaction(StorePersistence.TransactionToExecute transaction) {
         BigInteger txId = transaction.getTxId();
+        System.out.println("StoreManagerImpl processTransaction txId " + txId);
         CompletableFuture<List<Object>> transactionFuture = m_futuresBySynchronizationId.getIfPresent(transaction.getSynchronizationId());
+        System.out.println(
+                Thread.currentThread().getName() + " StoreManagerImpl processTransaction m_futuresBySynchronizationId.size() " + m_futuresBySynchronizationId
+                        .size());
+        System.out.println("StoreManagerImpl processTransaction m_futuresBySynchronizationId.getIfPresent " + transaction.getSynchronizationId() + " = "
+                                   + transactionFuture);
         // if m_currentTxId == 0, this is the particular case of a "bootstrap snapshot" loaded at the very first start (i.e. a snapshot that does not come from passed transactions).
         // in this case, the first txId may be 0 but we don't want to skip it
         if (txId.compareTo(m_currentTxId) > 0 || m_currentTxId.equals(BigInteger.ZERO)) {
@@ -229,11 +235,14 @@ class StoreManagerImpl implements StoreManager {
                 LOG.info("Error processing transaction", args -> args.add("transactionId", txId), error);
             }
 
+            System.out.println("StoreManagerImpl processTransaction transactionFuture " + transactionFuture);
             if (transactionFuture != null) {
                 if (error != null) {
                     transactionFuture.completeExceptionally(error);
+                    System.out.println("StoreManagerImpl processTransaction error " + error);
                 } else {
                     transactionFuture.complete(Arrays.asList(results)); // List.of cannot be used since results can contains nulls values
+                    System.out.println("StoreManagerImpl processTransaction results " + results);
                 }
             }
         } else {
@@ -351,7 +360,12 @@ class StoreManagerImpl implements StoreManager {
         public Future<List<Object>> submit() {
             checkValid();
             m_valid = false;
+            System.out.println("TransactionBuilderImpl submit " + m_synchronizationId);
             m_futuresBySynchronizationId.put(m_synchronizationId, m_future);
+            System.out.println("TransactionBuilderImpl m_futuresBySynchronizationId.getIfPresent " + m_synchronizationId + " = " + m_futuresBySynchronizationId
+                    .getIfPresent(m_synchronizationId));
+            System.out.println(
+                    Thread.currentThread().getName() + " TransactionBuilderImpl m_futuresBySynchronizationId.size " + m_futuresBySynchronizationId.size());
             m_storePersistence.persistTransaction(m_storeName, m_synchronizationId, m_commands);
 
             return m_future;
