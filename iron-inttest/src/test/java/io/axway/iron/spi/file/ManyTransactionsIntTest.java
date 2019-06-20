@@ -20,10 +20,10 @@ import io.axway.iron.spi.storage.TransactionStore;
 
 import static io.axway.iron.spi.jackson.JacksonTestHelper.*;
 
-public class HighlyConcurrentFileStoreTest {
+public class ManyTransactionsIntTest {
 
     @Test
-    public void shouldWork() {
+    public void shouldNotStuckInCaseOfManyTransactions() {
         String randomStoreName = "iron-store-" + UUID.randomUUID();
         Path filePath = Paths.get("iron", "iron-spi-file-inttest");
 
@@ -42,11 +42,15 @@ public class HighlyConcurrentFileStoreTest {
                 .withCommandClass(CreateSimpleEntity.class) //
                 .build()) {
 
-            for (int j = 0; j < 1_000_000; j++) {
+            for (int j = 0; j < 400_000; j++) {
+                System.out.println("j=" + j);
                 Store store = storeManager.getStore(randomStoreName);
                 try {
-                    Long id = store.createCommand(CreateSimpleEntity.class).set(CreateSimpleEntity::name).to(UUID.randomUUID().toString()).submit().get();
-                } catch (InterruptedException | ExecutionException e) {
+                    Future<Long> submit = store.createCommand(CreateSimpleEntity.class).set(CreateSimpleEntity::name).to(UUID.randomUUID().toString()).submit();
+                    String submitString = submit.toString();
+                    System.out.println("main submitString " + submitString);
+                    Long id = submit.get(10, TimeUnit.SECONDS);
+                } catch (InterruptedException | ExecutionException | TimeoutException e) {
                     throw new RuntimeException(e);
                 }
             }

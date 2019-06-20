@@ -338,7 +338,7 @@ class StoreManagerImpl implements StoreManager {
     private class TransactionBuilderImpl implements Store.TransactionBuilder {
         private final String m_storeName;
         private final String m_synchronizationId = UUID.randomUUID().toString();
-        private final CompletableFuture<List<Object>> m_future = new CompletableFuture<>();
+        private final MyCompletableFuture<List<Object>> m_future = new MyCompletableFuture<>();
         private final List<Command<?>> m_commands = new ArrayList<>();
         private boolean m_valid = true;
 
@@ -361,6 +361,7 @@ class StoreManagerImpl implements StoreManager {
             checkValid();
             m_valid = false;
             System.out.println("TransactionBuilderImpl submit " + m_synchronizationId);
+            m_future.setSynchronizationId(m_synchronizationId);
             m_futuresBySynchronizationId.put(m_synchronizationId, m_future);
             System.out.println("TransactionBuilderImpl m_futuresBySynchronizationId.getIfPresent " + m_synchronizationId + " = " + m_futuresBySynchronizationId
                     .getIfPresent(m_synchronizationId));
@@ -438,42 +439,77 @@ class StoreManagerImpl implements StoreManager {
      * @param <T> the wrapper future type
      */
     private static final class CommandFutureWrapper<T> implements Future<T> {
-        /**
-         * Strong reference to the transaction {@code Future}. Not need to be used.
-         */
-        @SuppressWarnings("unused")
-        private final Object m_txFuture;
-        private final Future<T> m_commandFuture;
+
+        private final CompletableFuture<List<Object>> m_txFuture;
+        private final int m_commandIndex;
 
         CommandFutureWrapper(CompletableFuture<List<Object>> txFuture, int commandIndex) {
             m_txFuture = txFuture;
-            //noinspection unchecked
-            m_commandFuture = txFuture.thenApply(values -> (T) values.get(commandIndex));
+            m_commandIndex = commandIndex;
         }
 
         @Override
         public boolean cancel(boolean mayInterruptIfRunning) {
-            return m_commandFuture.cancel(mayInterruptIfRunning);
+            return m_txFuture.cancel(mayInterruptIfRunning);
         }
 
         @Override
         public boolean isCancelled() {
-            return m_commandFuture.isCancelled();
+            return m_txFuture.isCancelled();
         }
 
         @Override
         public boolean isDone() {
-            return m_commandFuture.isDone();
+            return m_txFuture.isDone();
         }
 
         @Override
         public T get() throws InterruptedException, ExecutionException {
-            return m_commandFuture.get();
+            // Warning: do simplify the code by creating a property that contains m_txFuture.thenApply(...).
+            // Doing that leads to lose the strong reference to m_txFuture.
+            return m_txFuture.
+                    thenApply(values -> (T) values.get(m_commandIndex)).
+                    get();
         }
 
         @Override
         public T get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-            return m_commandFuture.get(timeout, unit);
+            // Warning: do simplify the code by creating a property that contains m_txFuture.thenApply(...).
+            // Doing that leads to lose the strong reference to m_txFuture.
+            System.out.println("CommandFutureWrapper get m_txFuture = " + m_txFuture.toString());
+            CompletableFuture<T> commandFuture = m_txFuture.
+                    thenApply(values -> (T) values.get(m_commandIndex));
+            System.out.println("CommandFutureWrapper get commandFuture = " + commandFuture.toString());
+            T result = null;
+            try {
+                result = commandFuture.
+                        get(timeout, unit);
+            } catch (Exception e) {
+                //System.out.println(commandFuture);
+                throw e;
+            }
+            //m_txFuture.toString();
+            return result;
+        }
+    }
+
+    private static final class MyCompletableFuture<T> extends CompletableFuture<T> {
+
+        private String m_synchronizationId;
+
+        @Override
+        protected void finalize() throws Throwable {
+            System.out.println("MyCompletableFuture finalize " + m_synchronizationId);
+            super.finalize();
+        }
+
+        public void setSynchronizationId(String synchronizationId) {
+            m_synchronizationId = synchronizationId;
+        }
+
+        @Override
+        public String toString() {
+            return super.toString() + " m_synchronizationId = " + m_synchronizationId;  // TODO implement method override
         }
     }
 }
